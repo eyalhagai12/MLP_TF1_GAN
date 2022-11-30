@@ -1,4 +1,6 @@
+import logging
 import os
+import random
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -12,7 +14,9 @@ tf.compat.v1.disable_v2_behavior()
 RESULT_IMAGES_DIR = "result_images"
 RESULT_LOSS_DIR = "result_losses"
 CHECKPOINTS_DIR = "checkpoints"
-TENSORBOARD_LOG_DIR = "tensorboard_log_dir"
+LOG_DIR = "log_dir"
+
+os.system("rm -r {} {} {} {}".format(RESULT_IMAGES_DIR, RESULT_LOSS_DIR, CHECKPOINTS_DIR, LOG_DIR))
 
 if not os.path.isdir(RESULT_IMAGES_DIR):
     os.mkdir(RESULT_IMAGES_DIR)
@@ -23,21 +27,45 @@ if not os.path.isdir(RESULT_LOSS_DIR):
 if not os.path.isdir(CHECKPOINTS_DIR):
     os.mkdir(CHECKPOINTS_DIR)
 
+if not os.path.isdir(LOG_DIR):
+    os.mkdir(LOG_DIR)
 
-def linear(inp, out_features: int, name: str):
+# create logger for logging results
+logger = logging.getLogger("mlp_log")
+log_path = os.path.join(LOG_DIR, "epochs_log.log")
+file_handler = logging.FileHandler(log_path, "w+")
+log_formatter = logging.Formatter("[%(asctime)s] - [%(levelname)s] - [%(name)s]: %(message)s")
+file_handler.setFormatter(log_formatter)
+logger.addHandler(file_handler)
+
+
+def log(level, message):
+    """
+    function to make logging easier
+
+    :param level: the level of the log message (info, debug, warning, error)
+    :param message: the message
+    """
+    logger.setLevel(level)
+    logger.log(level, message)
+
+
+def linear(inp, out_features: int, name: str, c: float = 0.001):
     """
     Create a linear layer
 
     :param inp: the input tensor in the computational graph
     :param out_features: the number of output features
     :param name: the name of the layer
+    :param c: clipping value
     :return: A Tensor representing the linear layer operation in the graph
     """
     weights = tf.compat.v1.get_variable(name, dtype=tf.float32,
                                         shape=(inp.shape[-1], out_features),
-                                        initializer=tf.compat.v1.truncated_normal_initializer(mean=0, stddev=0.02),
+                                        initializer=tf.compat.v1.truncated_normal_initializer(mean=0, stddev=c),
                                         trainable=True,
-                                        use_resource=True)
+                                        use_resource=True,
+                                        constraint=lambda x: tf.compat.v1.clip_by_value(x, -c, c))
     bias = tf.compat.v1.get_variable(name + "_bias", [out_features],
                                      initializer=tf.compat.v1.constant_initializer(0.),
                                      trainable=True,
@@ -104,15 +132,15 @@ def build_generator(inp_ph):
     :param inp_ph: a placeholder Tensor for the input layer of that generator model in the graph
     :return: A Tensor that can be called to preform the operations of the generator computational graph
     """
-    x = linear(inp_ph, 256, "gen_linear1")
-    x = lrelu(x, 0.2)
+    x = linear(inp_ph, 512, "gen_linear1")
+    x = lrelu(x, 0.01)
+    x = linear(x, 512, "gen_linear2")
+    x = lrelu(x, 0.01)
     x = linear(x, 512, "gen_linear3")
-    x = lrelu(x, 0.2)
-    x = linear(x, 1024, "gen_linear4")
-    x = lrelu(x, 0.2)
-    x = linear(x, 2048, "gen_linear5")
-    x = lrelu(x, 0.2)
-    x = linear(x, 784, "gen_linear6")
+    x = lrelu(x, 0.01)
+    x = linear(x, 512, "gen_linear4")
+    x = lrelu(x, 0.01)
+    x = linear(x, 784, "gen_linear5")
     x = sigmoid(x)
 
     return x
@@ -126,17 +154,13 @@ def build_discriminator(inp_ph, drop_out=0.3):
     :param drop_out: drop out rate
     :return: A Tensor that can be called to preform the operations of the discriminator computational graph
     """
-    x = linear(inp_ph, 1024, "disc_linear1")
-    x = lrelu(x, 0.2)
-    x = dropout(x, drop_out)
-    x = linear(x, 512, "disc_linear2")
-    x = lrelu(x, 0.2)
-    x = dropout(x, drop_out)
-    x = linear(x, 256, "disc_linear3")
-    x = lrelu(x, 0.2)
-    x = dropout(x, drop_out)
+    x = linear(inp_ph, 2048, "disc_linear1")
+    x = lrelu(x, 0.01)
+    x = linear(x, 1024, "disc_linear2")
+    x = lrelu(x, 0.01)
+    x = linear(x, 512, "disc_linear3")
+    x = lrelu(x, 0.01)
     x = linear(x, 1, "disc_linear4")
-    x = sigmoid(x)
 
     return x
 
@@ -146,7 +170,7 @@ def save_image_grid(images, labels, nrows, ncols, epoch):
     for i in range(nrows):
         for j in range(ncols):
             axes[i][j].imshow(images[i * ncols + j], cmap="gray")
-            label_ = "Real" if labels[i * ncols + j] >= 0.5 else "Fake"
+            label_ = "Score: %f.3" % labels[i * ncols + j]
             axes[i][j].set_title(label_)
 
     save_path = os.path.join(RESULT_IMAGES_DIR, "results_{}.png".format(epoch))
@@ -182,9 +206,23 @@ def batches(l, batch_size):
             yield l[i:]
 
 
+def show_image_example(x_train):
+    fig, axes = plt.subplots(8, 8, figsize=(10, 10))
+
+    images = random.sample(list(x_train), 64)
+    for i in range(8):
+        for j in range(8):
+            axes[i][j].imshow(images[i * 8 + j], cmap="gray")
+
+    plt.tight_layout()
+    plt.show()
+
+
 if __name__ == '__main__':
     # get dataset
     (x_train, y_train), (x_test, y_test) = tf.keras.datasets.mnist.load_data()
+
+    show_image_example(x_train)
 
     # quick preprocess of the input data
     x_train = x_train / 255.0  # normalize between 0 and 1
@@ -204,12 +242,14 @@ if __name__ == '__main__':
 
     # define loss for each model
     # discriminator
-    eps = 1e-2  # used to not get log(0)
-    discriminator_loss = tf.compat.v1.reduce_mean(
-        -tf.compat.v1.log(discriminator + eps) - tf.compat.v1.log(1 - generator_discriminator + eps))
+    # eps = 1e-2  # used to not get log(0)
+    # discriminator_loss = tf.compat.v1.reduce_mean(
+    #     -tf.compat.v1.log(discriminator + eps) - tf.compat.v1.log(1 - generator_discriminator + eps))
+    discriminator_loss = tf.compat.v1.reduce_mean(generator_discriminator - discriminator)
+    generator_loss = tf.compat.v1.reduce_mean(-generator_discriminator)
 
     # generator
-    generator_loss = tf.compat.v1.reduce_mean(-tf.compat.v1.log(generator_discriminator + eps))
+    # generator_loss = tf.compat.v1.reduce_mean(-tf.compat.v1.log(generator_discriminator + eps))
 
     # define optimizer for each model
     t_variables = tf.compat.v1.trainable_variables()
@@ -225,7 +265,7 @@ if __name__ == '__main__':
     sess.run(tf.compat.v1.global_variables_initializer())
 
     # training
-    fixed_random_noise = np.random.normal(0, 1, (1, 100))
+    fixed_random_noise = np.random.normal(0, 1, (64, 100))
     epochs = 200
     save_interval = 1
     batch_size = 128
@@ -256,17 +296,18 @@ if __name__ == '__main__':
         # save figures of losses
         generator_train_losses.append(np.mean(g_train_losses))
         discriminator_train_losses.append(np.mean(d_train_losses))
+        log(logging.INFO, "Epoch {} - Discriminator Loss: {}, Generator Loss: {}".format(epoch + 1,
+                                                                                         discriminator_train_losses[-1],
+                                                                                         generator_train_losses[-1]))
+
         save_loss_plots(generator_train_losses, discriminator_train_losses, epoch)
 
         # save result images and model every interval of epochs
         if epoch % save_interval == 0 or epoch == epochs - 1:
-            images = []
-            labels = []
-            for i in range(64):
-                generator_output = sess.run(generator, feed_dict={generator_input: list(fixed_random_noise)})
-                discriminator_output = sess.run(discriminator, feed_dict={discriminator_input: list(generator_output)})
-                output_image = generator_output.reshape(28, 28) * 255.0
-                images.append(output_image)
-                labels.append(discriminator_output)
-
-            save_image_grid(images, labels, 8, 8, epoch)
+            generator_output = sess.run(generator, feed_dict={generator_input: list(fixed_random_noise)})
+            discriminator_output = sess.run(discriminator, feed_dict={discriminator_input: list(generator_output)})
+            output_images = generator_output.reshape(64, 28, 28) * 255.0
+            discriminator_output = discriminator_output.reshape(-1)
+            # images.append(output_image)
+            # labels.append(discriminator_output)
+            save_image_grid(output_images, discriminator_output, 8, 8, epoch)
