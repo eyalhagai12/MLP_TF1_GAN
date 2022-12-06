@@ -4,15 +4,7 @@ import cv2
 import matplotlib.pyplot as plt
 import numpy as np
 
-BW_IMAGES_PATH = os.path.join("samples", "bw")
-RGB_IMAGES_PATH = os.path.join("samples", "rgb")
 IMG_SHAPE = (128, 128)
-
-# if bw directory is empty,fill it
-if len(os.listdir(BW_IMAGES_PATH)) <= 0:
-    for image_name in os.listdir(RGB_IMAGES_PATH):
-        image = cv2.imread(os.path.join(RGB_IMAGES_PATH, image_name))
-        cv2.imwrite(os.path.join(BW_IMAGES_PATH, image_name), cv2.cvtColor(image, cv2.COLOR_BGR2GRAY))
 
 
 def preprocess_image(image: np.ndarray) -> np.ndarray:
@@ -21,6 +13,14 @@ def preprocess_image(image: np.ndarray) -> np.ndarray:
 
 
 if __name__ == '__main__':
+    # if bw directory is empty,fill it
+    BW_IMAGES_PATH = os.path.join("samples", "bw")
+    RGB_IMAGES_PATH = os.path.join("samples", "rgb")
+    if len(os.listdir(BW_IMAGES_PATH)) <= 0:
+        for image_name in os.listdir(RGB_IMAGES_PATH):
+            image = cv2.imread(os.path.join(RGB_IMAGES_PATH, image_name))
+            cv2.imwrite(os.path.join(BW_IMAGES_PATH, image_name), cv2.cvtColor(image, cv2.COLOR_BGR2GRAY))
+
     for image_name in os.listdir(RGB_IMAGES_PATH):
         plt.cla()
         image = cv2.imread(os.path.join(RGB_IMAGES_PATH, image_name))
