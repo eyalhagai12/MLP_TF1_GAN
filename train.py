@@ -7,9 +7,12 @@ import imageio
 import matplotlib.pyplot as plt
 import numpy as np
 import tensorflow as tf
+from tqdm import tqdm
+from sklearn.model_selection import train_test_split
+
+from dataset import create_dataset, convert_batch_to_numpy
 
 tf.compat.v1.disable_v2_behavior()
-
 
 # G(z)
 def generator(x):
@@ -32,10 +35,30 @@ def generator(x):
     b2 = tf.compat.v1.get_variable('G_b2', [1024], initializer=b_init)
     h2 = tf.nn.relu(tf.matmul(h1, w2) + b2)
 
+    # 4rd hidden layer
+    w3 = tf.compat.v1.get_variable('G_w3', [h2.get_shape()[1], 4096], initializer=w_init)
+    b3 = tf.compat.v1.get_variable('G_b3', [4096], initializer=b_init)
+    h3 = tf.nn.relu(tf.matmul(h2, w3) + b3)
+
+    # 5rd hidden layer
+    w4 = tf.compat.v1.get_variable('G_w4', [h3.get_shape()[1], 8128], initializer=w_init)
+    b4 = tf.compat.v1.get_variable('G_b4', [8128], initializer=b_init)
+    h4 = tf.nn.relu(tf.matmul(h3, w4) + b4)
+
+    # 6rd hidden layer
+    w5 = tf.compat.v1.get_variable('G_w5', [h4.get_shape()[1], 4096], initializer=w_init)
+    b5 = tf.compat.v1.get_variable('G_b5', [4096], initializer=b_init)
+    h5 = tf.nn.relu(tf.matmul(h4, w5) + b5)
+
+    # 7rd hidden layer
+    w6 = tf.compat.v1.get_variable('G_w6', [h5.get_shape()[1], 1024], initializer=w_init)
+    b6 = tf.compat.v1.get_variable('G_b6', [1024], initializer=b_init)
+    h6 = tf.nn.relu(tf.matmul(h5, w6) + b6)
+
     # output hidden layer
-    w3 = tf.compat.v1.get_variable('G_w3', [h2.get_shape()[1], 784], initializer=w_init)
-    b3 = tf.compat.v1.get_variable('G_b3', [784], initializer=b_init)
-    o = tf.nn.tanh(tf.matmul(h2, w3) + b3)
+    w7 = tf.compat.v1.get_variable('G_w7', [h6.get_shape()[1], 3*128*128], initializer=w_init)
+    b7 = tf.compat.v1.get_variable('G_b7', [3*128*128], initializer=b_init)
+    o = tf.nn.tanh(tf.matmul(h6, w7) + b7)
 
     return o
 
@@ -64,24 +87,36 @@ def discriminator(x, drop_out):
     h2 = tf.nn.relu(tf.matmul(h1, w2) + b2)
     h2 = tf.nn.dropout(h2, drop_out)
 
+    # 4rd hidden layer
+    w3 = tf.compat.v1.get_variable('D_w3', [h2.get_shape()[1], 128], initializer=w_init)
+    b3 = tf.compat.v1.get_variable('D_b3', [128], initializer=b_init)
+    h3 = tf.nn.relu(tf.matmul(h2, w3) + b3)
+    h3 = tf.nn.dropout(h3, drop_out)
+
+    # 5rd hidden layer
+    w4 = tf.compat.v1.get_variable('D_w4', [h3.get_shape()[1], 64], initializer=w_init)
+    b4 = tf.compat.v1.get_variable('D_b4', [64], initializer=b_init)
+    h4 = tf.nn.relu(tf.matmul(h3, w4) + b4)
+    h4 = tf.nn.dropout(h4, drop_out)
+
+    # # 6rd hidden layer
+    # w5 = tf.compat.v1.get_variable('D_w5', [h4.get_shape()[1], 32], initializer=w_init)
+    # b5 = tf.compat.v1.get_variable('D_b5', [32], initializer=b_init)
+    # h5 = tf.nn.relu(tf.matmul(h4, w5) + b5)
+    # h5 = tf.nn.dropout(h5, drop_out)
+
     # output layer
-    w3 = tf.compat.v1.get_variable('D_w3', [h2.get_shape()[1], 1], initializer=w_init)
-    b3 = tf.compat.v1.get_variable('D_b3', [1], initializer=b_init)
-    o = tf.sigmoid(tf.matmul(h2, w3) + b3)
+    w5 = tf.compat.v1.get_variable('D_w5', [h4.get_shape()[1], 1], initializer=w_init)
+    b5 = tf.compat.v1.get_variable('D_b5', [3*128*128], initializer=b_init)
+    o = tf.sigmoid(tf.matmul(h4, w5) + b5)
 
     return o
 
 
-fixed_z_ = np.random.normal(0, 1, (25, 100))
 
+def show_result(test_set, num_epoch, show=False, save=False, path='result.png'):
 
-def show_result(num_epoch, show=False, save=False, path='result.png', isFix=False):
-    z_ = np.random.normal(0, 1, (25, 100))
-
-    if isFix:
-        test_images = sess.run(G_z, {z: fixed_z_, drop_out: 0.0})
-    else:
-        test_images = sess.run(G_z, {z: z_, drop_out: 0.0})
+    test_images = sess.run(G_z, {z: np.array(test_set).reshape(-1, 128*128), drop_out: 0.0})
 
     size_figure_grid = 5
     fig, ax = plt.subplots(size_figure_grid, size_figure_grid, figsize=(5, 5))
@@ -93,7 +128,7 @@ def show_result(num_epoch, show=False, save=False, path='result.png', isFix=Fals
         i = k // 5
         j = k % 5
         ax[i, j].cla()
-        ax[i, j].imshow(np.reshape(test_images[k], (28, 28)), cmap='gray')
+        ax[i, j].imshow(np.reshape(test_images[k], (128, 128, 3)))
 
     label = 'Epoch {0}'.format(num_epoch)
     fig.text(0.5, 0.04, label, ha='center')
@@ -103,6 +138,28 @@ def show_result(num_epoch, show=False, save=False, path='result.png', isFix=Fals
         plt.show()
     else:
         plt.close()
+    
+    # plot the train images
+    fig, ax = plt.subplots(size_figure_grid, size_figure_grid, figsize=(5, 5))
+    for i, j in itertools.product(range(size_figure_grid), range(size_figure_grid)):
+        ax[i, j].get_xaxis().set_visible(False)
+        ax[i, j].get_yaxis().set_visible(False)
+
+    for k in range(5 * 5):
+        i = k // 5
+        j = k % 5
+        ax[i, j].cla()
+        ax[i, j].imshow(np.reshape(test_set[k], (128, 128)))
+
+    label = 'Epoch {0}'.format(num_epoch)
+    fig.text(0.5, 0.04, label, ha='center')
+    plt.savefig('GAN_results/Fixed_results/GAN_train' + str(epoch + 1) + '.png')
+
+    if show:
+        plt.show()
+    else:
+        plt.close()
+
 
 
 def show_train_hist(hist, show=False, save=False, path='Train_hist.png'):
@@ -131,59 +188,63 @@ def show_train_hist(hist, show=False, save=False, path='Train_hist.png'):
 
 
 if __name__ == '__main__':
+    # check GPU usage
+    print("GPU available: ", tf.test.is_gpu_available())
+    print("Num GPUs Available: ", len(tf.config.list_physical_devices('GPU')))
+
     # training parameters
-    batch_size = 100
+    batch_size = 128
     lr = 0.0002
-    train_epoch = 100
+    train_epoch = 20
 
-    # load MNIST
-    # get dataset
-    (x_train, y_train), (x_test, y_test) = tf.keras.datasets.mnist.load_data()
+  
 
-    # show_image_example(x_train)
+    # define dataset
+    bw_dataset = create_dataset("sample_data/bw", batch_size)
+    rgb_dataset = create_dataset("sample_data/rgb", batch_size) 
 
-    # quick preprocess of the input data
-    x_train = x_train / 255.0  # normalize between 0 and 1
-    x_test = x_test / 255.0
+    x_train, x_test, y_train, y_test = train_test_split(bw_dataset, rgb_dataset, test_size=0.2, shuffle=True, random_state=42)
 
-    # networks : generator
-    with tf.compat.v1.variable_scope('G'):
-        z = tf.compat.v1.placeholder(tf.float32, shape=(None, 100))
-        G_z = generator(z)
 
-    # networks : discriminator
-    with tf.compat.v1.variable_scope('D') as scope:
-        drop_out = tf.compat.v1.placeholder(dtype=tf.float32, name='drop_out')
-        x = tf.compat.v1.placeholder(tf.float32, shape=(None, 784))
-        D_real = discriminator(x, drop_out)
-        scope.reuse_variables()
-        D_fake = discriminator(G_z, drop_out)
+    with tf.device("/gpu:0"):
+        # networks : generator
+        with tf.compat.v1.variable_scope('G'):
+            z = tf.compat.v1.placeholder(tf.float32, shape=(None, 128*128))
+            G_z = generator(z)
 
-    # loss for each network
-    eps = 1e-2
-    D_loss = tf.reduce_mean(-tf.compat.v1.log(D_real + eps) - tf.compat.v1.log(1 - D_fake + eps))
-    G_loss = tf.reduce_mean(-tf.compat.v1.log(D_fake + eps))
+        # networks : discriminator
+        with tf.compat.v1.variable_scope('D') as scope:
+            drop_out = tf.compat.v1.placeholder(dtype=tf.float32, name='drop_out')
+            x = tf.compat.v1.placeholder(tf.float32, shape=(None, 3*128*128))
+            D_real = discriminator(x, drop_out)
+            scope.reuse_variables()
+            D_fake = discriminator(G_z, drop_out)
 
-    # trainable variables for each network
-    t_vars = tf.compat.v1.trainable_variables()
-    D_vars = [var for var in t_vars if 'D_' in var.name]
-    G_vars = [var for var in t_vars if 'G_' in var.name]
+        # loss for each network
+        eps = 1e-2
+        D_loss = 0.5 * tf.reduce_mean(-tf.compat.v1.log(D_real + eps) - tf.compat.v1.log(tf.ones_like(G_z) - D_fake + eps))
+        G_loss = tf.reduce_mean(-tf.compat.v1.log(D_fake + eps)) + tf.losses.mean_absolute_error(x, G_z)
 
-    # optimizer for each network
-    D_optim = tf.compat.v1.train.AdamOptimizer(lr).minimize(D_loss, var_list=D_vars)
-    G_optim = tf.compat.v1.train.AdamOptimizer(lr).minimize(G_loss, var_list=G_vars)
+        # trainable variables for each network
+        t_vars = tf.compat.v1.trainable_variables()
+        D_vars = [var for var in t_vars if 'D_' in var.name]
+        G_vars = [var for var in t_vars if 'G_' in var.name]
+
+        # optimizer for each network
+        D_optim = tf.compat.v1.train.AdamOptimizer(lr).minimize(D_loss, var_list=D_vars)
+        G_optim = tf.compat.v1.train.AdamOptimizer(lr).minimize(G_loss, var_list=G_vars)
 
     # open session and initialize all variables
-    sess = tf.compat.v1.Session()
+    sess = tf.compat.v1.Session(config=tf.compat.v1.ConfigProto(allow_soft_placement=True, log_device_placement=True))
     sess.run(tf.compat.v1.global_variables_initializer())
 
     # results save folder
-    if not os.path.isdir('MNIST_GAN_results'):
-        os.mkdir('MNIST_GAN_results')
-    if not os.path.isdir('MNIST_GAN_results/Random_results'):
-        os.mkdir('MNIST_GAN_results/Random_results')
-    if not os.path.isdir('MNIST_GAN_results/Fixed_results'):
-        os.mkdir('MNIST_GAN_results/Fixed_results')
+    if not os.path.isdir('GAN_results'):
+        os.mkdir('GAN_results')
+    if not os.path.isdir('GAN_results/Random_results'):
+        os.mkdir('GAN_results/Random_results')
+    if not os.path.isdir('GAN_results/Fixed_results'):
+        os.mkdir('GAN_results/Fixed_results')
 
     train_hist = {}
     train_hist['D_losses'] = []
@@ -198,27 +259,26 @@ if __name__ == '__main__':
         G_losses = []
         D_losses = []
         epoch_start_time = time.time()
-        for iter in range(x_train.shape[0] // batch_size):
-            # update discriminator
-            x_ = x_train[iter * batch_size:(iter + 1) * batch_size]
-            z_ = np.random.normal(0, 1, (batch_size, 100))
+        for idx, (x_batch, y_batch) in tqdm(enumerate(zip(x_train, y_train)), desc="Epoch {}".format(epoch)):
+            # preprocess input and output
+            x_batch = convert_batch_to_numpy(x_batch, True).reshape(-1, 128*128)
+            y_batch = convert_batch_to_numpy(y_batch, False).reshape(-1, 3*128*128)
 
-            loss_d_, _ = sess.run([D_loss, D_optim], {x: x_.reshape(-1, 784), z: z_, drop_out: 0.3})
+            # update discriminator
+            loss_d_, _ = sess.run([D_loss, D_optim], {x: y_batch, z: x_batch, drop_out: 0.3})
             D_losses.append(loss_d_)
 
             # update generator
-            z_ = np.random.normal(0, 1, (batch_size, 100))
-            loss_g_, _ = sess.run([G_loss, G_optim], {z: z_, drop_out: 0.3})
+            loss_g_, _ = sess.run([G_loss, G_optim], {z: x_batch, x: y_batch, drop_out: 0.3})
             G_losses.append(loss_g_)
 
         epoch_end_time = time.time()
         per_epoch_ptime = epoch_end_time - epoch_start_time
         print('[%d/%d] - ptime: %.2f loss_d: %.3f, loss_g: %.3f' % (
             (epoch + 1), train_epoch, per_epoch_ptime, np.mean(D_losses), np.mean(G_losses)))
-        p = 'MNIST_GAN_results/Random_results/MNIST_GAN_' + str(epoch + 1) + '.png'
-        fixed_p = 'MNIST_GAN_results/Fixed_results/MNIST_GAN_' + str(epoch + 1) + '.png'
-        show_result((epoch + 1), save=True, path=p, isFix=False)
-        show_result((epoch + 1), save=True, path=fixed_p, isFix=True)
+        p = 'GAN_results/Random_results/GAN_' + str(epoch + 1) + '.png'
+        fixed_p = 'GAN_results/Fixed_results/GAN_' + str(epoch + 1) + '.png'
+        show_result(convert_batch_to_numpy(x_test[0], True).reshape(-1, 128*128), (epoch + 1), save=True, path=fixed_p)
         train_hist['D_losses'].append(np.mean(D_losses))
         train_hist['G_losses'].append(np.mean(G_losses))
         train_hist['per_epoch_ptimes'].append(per_epoch_ptime)
@@ -230,14 +290,14 @@ if __name__ == '__main__':
     print('Avg per epoch ptime: %.2f, total %d epochs ptime: %.2f' % (
         np.mean(train_hist['per_epoch_ptimes']), train_epoch, total_ptime))
     print("Training finish!... save training results")
-    with open('MNIST_GAN_results/train_hist.pkl', 'wb') as f:
+    with open('GAN_results/train_hist.pkl', 'wb') as f:
         pickle.dump(train_hist, f)
-    show_train_hist(train_hist, save=True, path='MNIST_GAN_results/MNIST_GAN_train_hist.png')
+    show_train_hist(train_hist, save=True, path='GAN_results/GAN_train_hist.png')
 
     images = []
     for e in range(train_epoch):
-        img_name = 'MNIST_GAN_results/Fixed_results/MNIST_GAN_' + str(e + 1) + '.png'
+        img_name = 'GAN_results/Fixed_results/GAN_' + str(e + 1) + '.png'
         images.append(imageio.imread(img_name))
-    imageio.mimsave('MNIST_GAN_results/generation_animation.gif', images, fps=5)
+    imageio.mimsave('GAN_results/generation_animation.gif', images, fps=5)
 
     sess.close()

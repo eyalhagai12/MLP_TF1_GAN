@@ -9,6 +9,7 @@ IMG_SHAPE = (128, 128)
 
 def preprocess_image(image: np.ndarray) -> np.ndarray:
     image = cv2.resize(image, IMG_SHAPE)
+    image = image / 255.0 # normalize 
     return image
 
 
