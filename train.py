@@ -1,18 +1,19 @@
 import itertools
+import math
 import os
-import pickle
 import time
 
-import imageio
 import matplotlib.pyplot as plt
 import numpy as np
 import tensorflow as tf
-from tqdm import tqdm
 from sklearn.model_selection import train_test_split
+from tqdm import tqdm
 
 from dataset import create_dataset, convert_batch_to_numpy
+from visualize import show_train_hist, show_image_grid, init_vis_workspace, save_session
 
 tf.compat.v1.disable_v2_behavior()
+
 
 # G(z)
 def generator(x):
@@ -56,9 +57,9 @@ def generator(x):
     h6 = tf.nn.relu(tf.matmul(h5, w6) + b6)
 
     # output hidden layer
-    w7 = tf.compat.v1.get_variable('G_w7', [h6.get_shape()[1], 3*128*128], initializer=w_init)
-    b7 = tf.compat.v1.get_variable('G_b7', [3*128*128], initializer=b_init)
-    o = tf.nn.tanh(tf.matmul(h6, w7) + b7)
+    w7 = tf.compat.v1.get_variable('G_w7', [h6.get_shape()[1], 3 * 128 * 128], initializer=w_init)
+    b7 = tf.compat.v1.get_variable('G_b7', [3 * 128 * 128], initializer=b_init)
+    o = tf.nn.tanh(tf.matmul(h6, w7) + b7, name="gen")
 
     return o
 
@@ -87,19 +88,19 @@ def discriminator(x, drop_out):
     h2 = tf.nn.relu(tf.matmul(h1, w2) + b2)
     h2 = tf.nn.dropout(h2, drop_out)
 
-    # 4rd hidden layer
+    # 4th hidden layer
     w3 = tf.compat.v1.get_variable('D_w3', [h2.get_shape()[1], 128], initializer=w_init)
     b3 = tf.compat.v1.get_variable('D_b3', [128], initializer=b_init)
     h3 = tf.nn.relu(tf.matmul(h2, w3) + b3)
     h3 = tf.nn.dropout(h3, drop_out)
 
-    # 5rd hidden layer
+    # 5th hidden layer
     w4 = tf.compat.v1.get_variable('D_w4', [h3.get_shape()[1], 64], initializer=w_init)
     b4 = tf.compat.v1.get_variable('D_b4', [64], initializer=b_init)
     h4 = tf.nn.relu(tf.matmul(h3, w4) + b4)
     h4 = tf.nn.dropout(h4, drop_out)
 
-    # # 6rd hidden layer
+    # # 6th hidden layer
     # w5 = tf.compat.v1.get_variable('D_w5', [h4.get_shape()[1], 32], initializer=w_init)
     # b5 = tf.compat.v1.get_variable('D_b5', [32], initializer=b_init)
     # h5 = tf.nn.relu(tf.matmul(h4, w5) + b5)
@@ -107,16 +108,14 @@ def discriminator(x, drop_out):
 
     # output layer
     w5 = tf.compat.v1.get_variable('D_w5', [h4.get_shape()[1], 1], initializer=w_init)
-    b5 = tf.compat.v1.get_variable('D_b5', [3*128*128], initializer=b_init)
-    o = tf.sigmoid(tf.matmul(h4, w5) + b5)
+    b5 = tf.compat.v1.get_variable('D_b5', [3 * 128 * 128], initializer=b_init)
+    o = tf.sigmoid(tf.matmul(h4, w5) + b5, name="disc")
 
     return o
 
 
-
 def show_result(test_set, num_epoch, show=False, save=False, path='result.png'):
-
-    test_images = sess.run(G_z, {z: np.array(test_set).reshape(-1, 128*128), drop_out: 0.0})
+    test_images = sess.run(G_z, {z: np.array(test_set).reshape(-1, 128 * 128), drop_out: 0.0})
 
     size_figure_grid = 5
     fig, ax = plt.subplots(size_figure_grid, size_figure_grid, figsize=(5, 5))
@@ -138,7 +137,7 @@ def show_result(test_set, num_epoch, show=False, save=False, path='result.png'):
         plt.show()
     else:
         plt.close()
-    
+
     # plot the train images
     fig, ax = plt.subplots(size_figure_grid, size_figure_grid, figsize=(5, 5))
     for i, j in itertools.product(range(size_figure_grid), range(size_figure_grid)):
@@ -153,33 +152,7 @@ def show_result(test_set, num_epoch, show=False, save=False, path='result.png'):
 
     label = 'Epoch {0}'.format(num_epoch)
     fig.text(0.5, 0.04, label, ha='center')
-    plt.savefig('GAN_results/Fixed_results/GAN_train' + str(epoch + 1) + '.png')
-
-    if show:
-        plt.show()
-    else:
-        plt.close()
-
-
-
-def show_train_hist(hist, show=False, save=False, path='Train_hist.png'):
-    x = range(len(hist['D_losses']))
-
-    y1 = hist['D_losses']
-    y2 = hist['G_losses']
-
-    plt.plot(x, y1, label='D_loss')
-    plt.plot(x, y2, label='G_loss')
-
-    plt.xlabel('Epoch')
-    plt.ylabel('Loss')
-
-    plt.legend(loc=4)
-    plt.grid(True)
-    plt.tight_layout()
-
-    if save:
-        plt.savefig(path)
+    plt.savefig('GAN_results/GAN_train' + str(epoch + 1) + '.png')
 
     if show:
         plt.show()
@@ -192,37 +165,46 @@ if __name__ == '__main__':
     print("GPU available: ", tf.test.is_gpu_available())
     print("Num GPUs Available: ", len(tf.config.list_physical_devices('GPU')))
 
-    # training parameters
-    batch_size = 128
-    lr = 0.0002
-    train_epoch = 20
+    # check which device to use
+    if tf.test.is_gpu_available():
+        device = "/gpu:0"
+    else:
+        device = "/cpu:0"
 
-  
+    # training parameters
+    batch_size = 4
+    lr = 0.0002
+    train_epoch = 10
 
     # define dataset
     bw_dataset = create_dataset("sample_data/bw", batch_size)
-    rgb_dataset = create_dataset("sample_data/rgb", batch_size) 
+    rgb_dataset = create_dataset("sample_data/rgb", batch_size)
 
-    x_train, x_test, y_train, y_test = train_test_split(bw_dataset, rgb_dataset, test_size=0.2, shuffle=True, random_state=42)
+    x_train, x_test, y_train, y_test = train_test_split(bw_dataset, rgb_dataset, test_size=0.2, shuffle=True,
+                                                        random_state=42)
 
+    # init visualization workspace
+    init_vis_workspace()
 
-    with tf.device("/gpu:0"):
+    # initiate models
+    with tf.device(device):
         # networks : generator
         with tf.compat.v1.variable_scope('G'):
-            z = tf.compat.v1.placeholder(tf.float32, shape=(None, 128*128))
+            z = tf.compat.v1.placeholder(tf.float32, shape=(None, 128 * 128))
             G_z = generator(z)
 
         # networks : discriminator
         with tf.compat.v1.variable_scope('D') as scope:
             drop_out = tf.compat.v1.placeholder(dtype=tf.float32, name='drop_out')
-            x = tf.compat.v1.placeholder(tf.float32, shape=(None, 3*128*128))
+            x = tf.compat.v1.placeholder(tf.float32, shape=(None, 3 * 128 * 128))
             D_real = discriminator(x, drop_out)
             scope.reuse_variables()
             D_fake = discriminator(G_z, drop_out)
 
         # loss for each network
         eps = 1e-2
-        D_loss = 0.5 * tf.reduce_mean(-tf.compat.v1.log(D_real + eps) - tf.compat.v1.log(tf.ones_like(G_z) - D_fake + eps))
+        D_loss = 0.5 * tf.reduce_mean(
+            -tf.compat.v1.log(D_real + eps) - tf.compat.v1.log(tf.ones_like(G_z) - D_fake + eps))
         G_loss = tf.reduce_mean(-tf.compat.v1.log(D_fake + eps)) + tf.losses.mean_absolute_error(x, G_z)
 
         # trainable variables for each network
@@ -235,16 +217,12 @@ if __name__ == '__main__':
         G_optim = tf.compat.v1.train.AdamOptimizer(lr).minimize(G_loss, var_list=G_vars)
 
     # open session and initialize all variables
-    sess = tf.compat.v1.Session(config=tf.compat.v1.ConfigProto(allow_soft_placement=True, log_device_placement=True))
+    sess = tf.compat.v1.Session()
     sess.run(tf.compat.v1.global_variables_initializer())
 
     # results save folder
     if not os.path.isdir('GAN_results'):
         os.mkdir('GAN_results')
-    if not os.path.isdir('GAN_results/Random_results'):
-        os.mkdir('GAN_results/Random_results')
-    if not os.path.isdir('GAN_results/Fixed_results'):
-        os.mkdir('GAN_results/Fixed_results')
 
     train_hist = {}
     train_hist['D_losses'] = []
@@ -255,14 +233,15 @@ if __name__ == '__main__':
     # training-loop
     np.random.seed(int(time.time()))
     start_time = time.time()
+    min_loss = math.inf
     for epoch in range(train_epoch):
         G_losses = []
         D_losses = []
         epoch_start_time = time.time()
         for idx, (x_batch, y_batch) in tqdm(enumerate(zip(x_train, y_train)), desc="Epoch {}".format(epoch)):
             # preprocess input and output
-            x_batch = convert_batch_to_numpy(x_batch, True).reshape(-1, 128*128)
-            y_batch = convert_batch_to_numpy(y_batch, False).reshape(-1, 3*128*128)
+            x_batch = convert_batch_to_numpy(x_batch, True).reshape(-1, 128 * 128)
+            y_batch = convert_batch_to_numpy(y_batch, False).reshape(-1, 3 * 128 * 128)
 
             # update discriminator
             loss_d_, _ = sess.run([D_loss, D_optim], {x: y_batch, z: x_batch, drop_out: 0.3})
@@ -272,13 +251,21 @@ if __name__ == '__main__':
             loss_g_, _ = sess.run([G_loss, G_optim], {z: x_batch, x: y_batch, drop_out: 0.3})
             G_losses.append(loss_g_)
 
+        # save session
+        save_session(sess, "last")
+
+        # save best model every epoch
+        if np.mean(G_losses) < min_loss:
+            min_loss = np.mean(G_losses)
+            save_session(sess, "best")
+
         epoch_end_time = time.time()
         per_epoch_ptime = epoch_end_time - epoch_start_time
         print('[%d/%d] - ptime: %.2f loss_d: %.3f, loss_g: %.3f' % (
             (epoch + 1), train_epoch, per_epoch_ptime, np.mean(D_losses), np.mean(G_losses)))
-        p = 'GAN_results/Random_results/GAN_' + str(epoch + 1) + '.png'
-        fixed_p = 'GAN_results/Fixed_results/GAN_' + str(epoch + 1) + '.png'
-        show_result(convert_batch_to_numpy(x_test[0], True).reshape(-1, 128*128), (epoch + 1), save=True, path=fixed_p)
+
+        # save results
+        show_image_grid(G_z, z, sess, (x_test, y_test), epoch, 2, 2)
         train_hist['D_losses'].append(np.mean(D_losses))
         train_hist['G_losses'].append(np.mean(G_losses))
         train_hist['per_epoch_ptimes'].append(per_epoch_ptime)
@@ -290,14 +277,7 @@ if __name__ == '__main__':
     print('Avg per epoch ptime: %.2f, total %d epochs ptime: %.2f' % (
         np.mean(train_hist['per_epoch_ptimes']), train_epoch, total_ptime))
     print("Training finish!... save training results")
-    with open('GAN_results/train_hist.pkl', 'wb') as f:
-        pickle.dump(train_hist, f)
-    show_train_hist(train_hist, save=True, path='GAN_results/GAN_train_hist.png')
 
-    images = []
-    for e in range(train_epoch):
-        img_name = 'GAN_results/Fixed_results/GAN_' + str(e + 1) + '.png'
-        images.append(imageio.imread(img_name))
-    imageio.mimsave('GAN_results/generation_animation.gif', images, fps=5)
+    show_train_hist(train_hist, save=True)
 
     sess.close()
