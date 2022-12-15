@@ -15,8 +15,8 @@ def preprocess_image(image: np.ndarray) -> np.ndarray:
 
 if __name__ == '__main__':
     # if bw directory is empty,fill it
-    BW_IMAGES_PATH = os.path.join("sample_data", "bw")
-    RGB_IMAGES_PATH = os.path.join("sample_data", "rgb")
+    BW_IMAGES_PATH = os.path.join("linear_sample_data", "bw")
+    RGB_IMAGES_PATH = os.path.join("linear_sample_data", "rgb")
     if len(os.listdir(BW_IMAGES_PATH)) <= 0:
         for image_name in os.listdir(RGB_IMAGES_PATH):
             image = cv2.imread(os.path.join(RGB_IMAGES_PATH, image_name))

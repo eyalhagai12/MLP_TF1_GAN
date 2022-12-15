@@ -1,4 +1,5 @@
 import os
+import logging
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -6,12 +7,25 @@ import tensorflow as tf
 
 from dataset import convert_batch_to_numpy
 
+# dirs
 RESULT_DIR: str = ""
 RUN_DIR: str = ""
 IMAGES_DIR: str = ""
 CHECKPOINT_DIR: str = ""
 LOSSES_DIR: str = ""
+LOG_DIR: str = ""
 
+# image shape
+IMG_SHAPE = 128
+
+# log
+LOG_NAME = "train_log"
+
+def get_logger() -> logging.Logger:
+    return logging.getLogger(LOG_NAME)
+
+def log(message):
+    get_logger().info(message)
 
 def show_train_hist(hist, show=False, save=False):
     x = range(len(hist['D_losses']))
@@ -65,11 +79,24 @@ def init_vis_workspace():
     if not os.path.isdir(CHECKPOINT_DIR):
         os.mkdir(CHECKPOINT_DIR)
 
-    # create dir in the current run for checkpoints of the model
+    # create dir in the current run for the loss graphs of the model
     LOSSES_DIR = os.path.join(RUN_DIR, "losses")
     if not os.path.isdir(LOSSES_DIR):
         os.mkdir(LOSSES_DIR)
+    
+    # create dir in the current run for the log of the model
+    LOG_DIR = os.path.join(RUN_DIR, "logs")
+    if not os.path.isdir(LOG_DIR):
+        os.mkdir(LOG_DIR)
 
+    # create log 
+    logger = logging.getLogger(LOG_NAME)
+    log_file_name = "train_log.log"
+    file_handler = logging.FileHandler(os.path.join(LOG_DIR, log_file_name), "w+")
+    log_format = logging.Formatter("[%(asctime)s] - [%(levelname)s] - [%(name)s]: %(message)s")
+    file_handler.setFormatter(log_format)
+    logger.addHandler(file_handler)
+    logger.setLevel(logging.INFO)
 
 def save_session(session, name):
     # create dir for that session
@@ -98,12 +125,12 @@ def show_image_grid(generator, gen_placeholder, session, test_set, epoch, n_rows
     """
     for x, y in zip(*test_set):
         # get images
-        x_batch = convert_batch_to_numpy(x, True).reshape(-1, 128 * 128)
+        x_batch = convert_batch_to_numpy(x, True).reshape(-1,IMG_SHAPE * IMG_SHAPE)
         y_batch = convert_batch_to_numpy(y, False)
 
         # get output
         out = session.run(generator, feed_dict={gen_placeholder: x_batch})
-        assert out.shape[0] == n_cols * n_rows  # assert that we can fill the figure properly
+        assert out.shape[0] >= n_cols * n_rows  # assert that we can fill the figure properly
 
         # create figure
         fig, axes = plt.subplots(n_rows, 2 * n_cols, figsize=(15, 15))
@@ -116,7 +143,7 @@ def show_image_grid(generator, gen_placeholder, session, test_set, epoch, n_rows
         # show generated images
         for i in range(n_rows):
             for j in range(n_cols, 2 * n_cols):
-                axes[i][j].imshow((out[i * n_cols + (j - n_cols)].reshape(128, 128, 3) * 255.0).astype(np.uint8))
+                axes[i][j].imshow((out[i * n_cols + (j - n_cols)].reshape(IMG_SHAPE,IMG_SHAPE, 3) * 255.0).astype(np.uint8))
 
         # save and show figure
         fig.tight_layout()

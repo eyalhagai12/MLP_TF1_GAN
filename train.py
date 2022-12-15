@@ -10,10 +10,11 @@ from sklearn.model_selection import train_test_split
 from tqdm import tqdm
 
 from dataset import create_dataset, convert_batch_to_numpy
-from visualize import show_train_hist, show_image_grid, init_vis_workspace, save_session
+from visualize import show_train_hist, show_image_grid, init_vis_workspace, save_session, log
 
 tf.compat.v1.disable_v2_behavior()
 
+IMG_SHAPE = 128
 
 # G(z)
 def generator(x):
@@ -57,9 +58,50 @@ def generator(x):
     h6 = tf.nn.relu(tf.matmul(h5, w6) + b6)
 
     # output hidden layer
-    w7 = tf.compat.v1.get_variable('G_w7', [h6.get_shape()[1], 3 * 128 * 128], initializer=w_init)
-    b7 = tf.compat.v1.get_variable('G_b7', [3 * 128 * 128], initializer=b_init)
+    w7 = tf.compat.v1.get_variable('G_w7', [h6.get_shape()[1], 3 * IMG_SHAPE * IMG_SHAPE], initializer=w_init)
+    b7 = tf.compat.v1.get_variable('G_b7', [3 * IMG_SHAPE * IMG_SHAPE], initializer=b_init)
     o = tf.nn.tanh(tf.matmul(h6, w7) + b7, name="gen")
+
+    return o
+
+
+# G(z)
+def weaker_generator(x):
+    # initializers
+    w_init = tf.compat.v1.truncated_normal_initializer(mean=0, stddev=0.02)
+    b_init = tf.constant_initializer(0.)
+
+    # 1st hidden layer
+    w0 = tf.compat.v1.get_variable('G_w0', [x.get_shape()[1], 256], initializer=w_init)
+    b0 = tf.compat.v1.get_variable('G_b0', [256], initializer=b_init)
+    h0 = tf.nn.relu(tf.matmul(x, w0) + b0)
+
+    # 2nd hidden layer
+    w1 = tf.compat.v1.get_variable('G_w1', [h0.get_shape()[1], 512], initializer=w_init)
+    b1 = tf.compat.v1.get_variable('G_b1', [512], initializer=b_init)
+    h1 = tf.nn.relu(tf.matmul(h0, w1) + b1)
+
+    # 3rd hidden layer
+    w2 = tf.compat.v1.get_variable('G_w2', [h1.get_shape()[1], 1024], initializer=w_init)
+    b2 = tf.compat.v1.get_variable('G_b2', [1024], initializer=b_init)
+    h2 = tf.nn.relu(tf.matmul(h1, w2) + b2)
+
+    # output hidden layer
+    w3 = tf.compat.v1.get_variable('G_w3', [h2.get_shape()[1], 3 * IMG_SHAPE * IMG_SHAPE], initializer=w_init)
+    b3 = tf.compat.v1.get_variable('G_b3', [3 * IMG_SHAPE * IMG_SHAPE], initializer=b_init)
+    o = tf.nn.tanh(tf.matmul(h2, w3) + b3, name="gen")
+
+    return o
+
+def linear_generator(x):
+    # initializers
+    w_init = tf.compat.v1.truncated_normal_initializer(mean=0, stddev=0.02)
+    b_init = tf.constant_initializer(0.)
+
+    # input layer
+    w0 = tf.compat.v1.get_variable('G_w0', [x.get_shape()[1], 3*IMG_SHAPE*IMG_SHAPE], initializer=w_init)
+    b0 = tf.compat.v1.get_variable('G_b0', [3*IMG_SHAPE*IMG_SHAPE], initializer=b_init)
+    o = tf.sigmoid(tf.matmul(x, w0) + b0, name="gen")
 
     return o
 
@@ -100,22 +142,62 @@ def discriminator(x, drop_out):
     h4 = tf.nn.relu(tf.matmul(h3, w4) + b4)
     h4 = tf.nn.dropout(h4, drop_out)
 
-    # # 6th hidden layer
-    # w5 = tf.compat.v1.get_variable('D_w5', [h4.get_shape()[1], 32], initializer=w_init)
-    # b5 = tf.compat.v1.get_variable('D_b5', [32], initializer=b_init)
-    # h5 = tf.nn.relu(tf.matmul(h4, w5) + b5)
-    # h5 = tf.nn.dropout(h5, drop_out)
-
     # output layer
     w5 = tf.compat.v1.get_variable('D_w5', [h4.get_shape()[1], 1], initializer=w_init)
-    b5 = tf.compat.v1.get_variable('D_b5', [3 * 128 * 128], initializer=b_init)
+    b5 = tf.compat.v1.get_variable('D_b5', [3 * IMG_SHAPE * IMG_SHAPE], initializer=b_init)
     o = tf.sigmoid(tf.matmul(h4, w5) + b5, name="disc")
 
     return o
 
 
+# D(x)
+def weaker_discriminator(x, drop_out):
+    # initializers
+    w_init = tf.compat.v1.truncated_normal_initializer(mean=0, stddev=0.02)
+    b_init = tf.constant_initializer(0.)
+
+    # 1st hidden layer
+    w0 = tf.compat.v1.get_variable('D_w0', [x.get_shape()[1], 1024], initializer=w_init)
+    b0 = tf.compat.v1.get_variable('D_b0', [1024], initializer=b_init)
+    h0 = tf.nn.relu(tf.matmul(x, w0) + b0)
+    h0 = tf.nn.dropout(h0, drop_out)
+
+    # 2nd hidden layer
+    w1 = tf.compat.v1.get_variable('D_w1', [h0.get_shape()[1], 512], initializer=w_init)
+    b1 = tf.compat.v1.get_variable('D_b1', [512], initializer=b_init)
+    h1 = tf.nn.relu(tf.matmul(h0, w1) + b1)
+    h1 = tf.nn.dropout(h1, drop_out)
+
+    # 3rd hidden layer
+    w2 = tf.compat.v1.get_variable('D_w2', [h1.get_shape()[1], 256], initializer=w_init)
+    b2 = tf.compat.v1.get_variable('D_b2', [256], initializer=b_init)
+    h2 = tf.nn.relu(tf.matmul(h1, w2) + b2)
+    h2 = tf.nn.dropout(h2, drop_out)
+
+    # output layer
+    w3 = tf.compat.v1.get_variable('D_w3', [h2.get_shape()[1], 1], initializer=w_init)
+    b3 = tf.compat.v1.get_variable('D_b3', [3 * IMG_SHAPE * IMG_SHAPE], initializer=b_init)
+    o = tf.sigmoid(tf.matmul(h2, w3) + b3, name="disc")
+
+    return o
+
+def linear_discriminator(x, drop_out):
+
+    # initializers
+    w_init = tf.compat.v1.truncated_normal_initializer(mean=0, stddev=0.02)
+    b_init = tf.constant_initializer(0.)
+
+    # input layer
+    w0 = tf.compat.v1.get_variable('D_w0', [x.get_shape()[1], 1], initializer=w_init)
+    b0 = tf.compat.v1.get_variable('D_b0', [1], initializer=b_init)
+    o = tf.sigmoid(tf.matmul(x, w0) + b0, name= "disc")
+
+    return o
+
+
+
 def show_result(test_set, num_epoch, show=False, save=False, path='result.png'):
-    test_images = sess.run(G_z, {z: np.array(test_set).reshape(-1, 128 * 128), drop_out: 0.0})
+    test_images = sess.run(G_z, {z: np.array(test_set).reshape(-1, IMG_SHAPE * IMG_SHAPE), drop_out: 0.0})
 
     size_figure_grid = 5
     fig, ax = plt.subplots(size_figure_grid, size_figure_grid, figsize=(5, 5))
@@ -127,7 +209,7 @@ def show_result(test_set, num_epoch, show=False, save=False, path='result.png'):
         i = k // 5
         j = k % 5
         ax[i, j].cla()
-        ax[i, j].imshow(np.reshape(test_images[k], (128, 128, 3)))
+        ax[i, j].imshow(np.reshape(test_images[k], (IMG_SHAPE, IMG_SHAPE, 3)))
 
     label = 'Epoch {0}'.format(num_epoch)
     fig.text(0.5, 0.04, label, ha='center')
@@ -148,7 +230,7 @@ def show_result(test_set, num_epoch, show=False, save=False, path='result.png'):
         i = k // 5
         j = k % 5
         ax[i, j].cla()
-        ax[i, j].imshow(np.reshape(test_set[k], (128, 128)))
+        ax[i, j].imshow(np.reshape(test_set[k], (IMG_SHAPE, IMG_SHAPE)))
 
     label = 'Epoch {0}'.format(num_epoch)
     fig.text(0.5, 0.04, label, ha='center')
@@ -172,9 +254,9 @@ if __name__ == '__main__':
         device = "/cpu:0"
 
     # training parameters
-    batch_size = 4
+    batch_size = 128
     lr = 0.0002
-    train_epoch = 10
+    train_epoch = 5
 
     # define dataset
     bw_dataset = create_dataset("sample_data/bw", batch_size)
@@ -190,16 +272,16 @@ if __name__ == '__main__':
     with tf.device(device):
         # networks : generator
         with tf.compat.v1.variable_scope('G'):
-            z = tf.compat.v1.placeholder(tf.float32, shape=(None, 128 * 128))
-            G_z = generator(z)
+            z = tf.compat.v1.placeholder(tf.float32, shape=(None, IMG_SHAPE * IMG_SHAPE))
+            G_z = generator(z)   #   EDITED!!
 
         # networks : discriminator
         with tf.compat.v1.variable_scope('D') as scope:
             drop_out = tf.compat.v1.placeholder(dtype=tf.float32, name='drop_out')
-            x = tf.compat.v1.placeholder(tf.float32, shape=(None, 3 * 128 * 128))
-            D_real = discriminator(x, drop_out)
+            x = tf.compat.v1.placeholder(tf.float32, shape=(None, 3 * IMG_SHAPE * IMG_SHAPE))
+            D_real = discriminator(x, drop_out)      # EDITED!!!
             scope.reuse_variables()
-            D_fake = discriminator(G_z, drop_out)
+            D_fake = discriminator(G_z, drop_out)    # EDITED!!!
 
         # loss for each network
         eps = 1e-2
@@ -240,8 +322,8 @@ if __name__ == '__main__':
         epoch_start_time = time.time()
         for idx, (x_batch, y_batch) in tqdm(enumerate(zip(x_train, y_train)), desc="Epoch {}".format(epoch)):
             # preprocess input and output
-            x_batch = convert_batch_to_numpy(x_batch, True).reshape(-1, 128 * 128)
-            y_batch = convert_batch_to_numpy(y_batch, False).reshape(-1, 3 * 128 * 128)
+            x_batch = convert_batch_to_numpy(x_batch, True).reshape(-1, IMG_SHAPE * IMG_SHAPE)
+            y_batch = convert_batch_to_numpy(y_batch, False).reshape(-1, 3 * IMG_SHAPE * IMG_SHAPE)
 
             # update discriminator
             loss_d_, _ = sess.run([D_loss, D_optim], {x: y_batch, z: x_batch, drop_out: 0.3})
@@ -264,8 +346,13 @@ if __name__ == '__main__':
         print('[%d/%d] - ptime: %.2f loss_d: %.3f, loss_g: %.3f' % (
             (epoch + 1), train_epoch, per_epoch_ptime, np.mean(D_losses), np.mean(G_losses)))
 
+        # log results
+        log("--------------------------- Epoch {} ---------------------------".format(epoch))
+        log("Discriminator Loss: {}".format(np.mean(D_losses)))
+        log("Generator Loss: {}\n".format(np.mean(G_losses)))
+
         # save results
-        show_image_grid(G_z, z, sess, (x_test, y_test), epoch, 2, 2)
+        show_image_grid(G_z, z, sess, (x_test, y_test), epoch, 4, 4)
         train_hist['D_losses'].append(np.mean(D_losses))
         train_hist['G_losses'].append(np.mean(G_losses))
         train_hist['per_epoch_ptimes'].append(per_epoch_ptime)
